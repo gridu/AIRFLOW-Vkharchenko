@@ -20,7 +20,8 @@ def create_dag():
         task_check_file = FileSensor(
             task_id="check_file_exist",
             filepath=path_to_file,
-            poke_interval=20)
+            poke_interval=20,
+            fs_conn_id="fs_default")
 
         task_trigger_dag = TriggerDagRunOperator(
             task_id="trigger_dag",
