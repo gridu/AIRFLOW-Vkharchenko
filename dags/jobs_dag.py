@@ -8,6 +8,7 @@ from airflow.operators.python_operator import BranchPythonOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.postgres_operator import PostgresOperator
 from airflow.utils.trigger_rule import TriggerRule
+from airflow.operators.postgres_custom import PostgreSQLCountRowsOperator
 
 config = {
     'dag_id_1': {'schedule_interval': None,
@@ -22,7 +23,7 @@ config = {
 }
 
 dags = []
-db_name = 'PostgreSQL'  # temporary, for testing purposes
+db_name = 'PostgreSQL'
 
 
 def log(dag_id, db_name):
@@ -53,7 +54,7 @@ def get_count_rows(**kwargs):
 
 
 def check_table_exist(sql_to_get_schema, sql_to_check_table_exist,
-                      table_name, **kwargs):
+                      table_name):
     """ callable function to get schema name and after that check if table exist """
     hook = PostgresHook()
     # get schema name
@@ -75,11 +76,15 @@ def check_table_exist(sql_to_get_schema, sql_to_check_table_exist,
 
 
 for config_key, config_value in config.items():
+
     def create_dag():
-        with DAG(
-                config_key,
-                default_args={'start_date': config_value['start_date']},
-                schedule_interval=config_value['schedule_interval']) as dag:
+
+        with DAG(config_key,
+                 default_args={'start_date': config_value['start_date']},
+                 schedule_interval=config_value['schedule_interval']) as dag:
+
+            _table_name = config_value['table_name']
+
             task_log_info = PythonOperator(
                 task_id='log_info',
                 provide_context=False,
@@ -98,27 +103,28 @@ for config_key, config_value in config.items():
                 op_args=["SELECT * FROM pg_tables;",
                          "SELECT * FROM information_schema.tables "
                          "WHERE table_schema = '{}'"
-                         "AND table_name = '{}';", 'table_name'])
+                         "AND table_name = '{}';", _table_name])
 
             task_skip_table_creation = DummyOperator(
                 task_id='skip_table_creation')
 
             task_create_table = PostgresOperator(
                 task_id='create_table',
-                sql='''CREATE TABLE table_name(
-                custom_id integer NOT NULL, user_name VARCHAR (50) NOT NULL, timestamp TIMESTAMP NOT NULL);''')
+                sql='''CREATE TABLE {table_name}(
+                custom_id integer NOT NULL, user_name VARCHAR (50) 
+                NOT NULL, timestamp TIMESTAMP NOT NULL);'''.format(table_name=_table_name))
 
             task_insert_new_row = PostgresOperator(
                 task_id='insert_new_row',
                 trigger_rule=TriggerRule.ALL_DONE,
-                sql='''INSERT INTO table_name VALUES
-                (%s, '{{ ti.xcom_pull(task_ids='execute_bash', key='return_value') }}', %s);''',
+                sql='''INSERT INTO {table_name} VALUES
+                (%s, '{{{{ ti.xcom_pull(task_ids='execute_bash', key='return_value') }}}}', %s);'''
+                    .format(table_name=_table_name),
                 parameters=(uuid.uuid4().int % 123456789, datetime.now()))
 
-            task_query_the_table = PythonOperator(
+            task_query_the_table = PostgreSQLCountRowsOperator(
                 task_id='query_the_table',
-                python_callable=get_count_rows,
-                provide_context=True)
+                table_name=_table_name)
 
             task_print_the_result = PythonOperator(
                 task_id='print_the_result',
@@ -126,10 +132,9 @@ for config_key, config_value in config.items():
                 provide_context=True)
 
             task_log_info >> task_get_username_bash >> task_check_table_exist >> \
-            [task_skip_table_creation, task_create_table] >> task_insert_new_row >> task_query_the_table >> \
-            task_print_the_result
+                    [task_skip_table_creation, task_create_table] >> \
+            task_insert_new_row >> task_query_the_table >> task_print_the_result
 
         return dag
-
 
     globals()[config_key] = create_dag()
