@@ -75,7 +75,7 @@ def check_table_exist(**kwargs):
 
     hook = PostgresHook()
     # check table exist
-    query_result = hook.get_first(sql=sql_to_check_table_exist.format(schema, table_name))
+    query_result = hook.get_first(sql=sql_to_check_table_exist)
     if query_result:
         return exists_task
     else:
