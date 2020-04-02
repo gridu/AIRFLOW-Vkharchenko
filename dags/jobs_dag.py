@@ -31,7 +31,7 @@ def log(dag_id, db_name):
 
 
 def push_run_id(**kwargs):
-    return f"{kwargs['run_id']} ended"
+    return f'{kwargs["run_id"]} ended'
 
 
 def pull_user(**context):
@@ -42,21 +42,22 @@ def pull_user(**context):
 def pull_the_result(**kwargs):
     ti = kwargs['ti']
     msg = ti.xcom_pull(task_ids='query_the_table', key='return_value')
-    print("received message: '%s'" % msg)
+    print(f'received message: {msg}')
     context = ti.get_template_context()
     print(f'context: {context}')
 
 
 def get_count_rows(**kwargs):  # Code practice: install and use PostgeSQL (Part I)
     hook = PostgresHook()
-    query = hook.get_records(sql='SELECT COUNT(*) FROM table_name;')
-    kwargs['ti'].xcom_push(key='table_name_count', value=query[0][0])
+    query = hook.get_records(sql=f'SELECT COUNT(*) FROM {_table_name};')
+    kwargs['ti'].xcom_push(key=f'{_table_name}_count', value=query[0][0])
 
 
 def check_table_exist(sql_to_get_schema, sql_to_check_table_exist,
                       table_name, **kwargs):
     """ callable function to get schema name and after that check if table exist """
     hook = PostgresHook()
+
     # get schema name
     query = hook.get_records(sql=sql_to_get_schema)
     for result in query:

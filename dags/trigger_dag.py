@@ -8,15 +8,17 @@ from airflow.sensors.external_task_sensor import ExternalTaskSensor
 from airflow.models import Variable
 
 dag_name = 'trigger_dag_test'
-path_to_file = Variable.get('trigger_dag_path_to_file') or 'usr/local/airflow/dags/test.txt'
-path_to_dir = Variable.get('trigger_dag_path_to_dir') or 'usr/local/airflow/dags/trigger_dag_results'
+path_to_file = Variable.get('trigger_dag_path_to_file') or '/usr/local/airflow/dags/test.txt'
+path_to_dir = Variable.get('trigger_dag_path_to_dir') or '/usr/local/airflow/dags/trigger_dag_results'
 
 
 def create_dag():
+
     with DAG(
             dag_name,
             default_args={'start_date': datetime(2020, 3, 18)},
             schedule_interval=None) as dag:
+
         task_check_file = FileSensor(
             task_id="check_file_exist",
             filepath=path_to_file,
@@ -41,10 +43,12 @@ def create_dag():
 
 
 def create_subdag(parent_dag_name, child_dag_name, args):
+
     dag_subdag = DAG(
         dag_id=f'{parent_dag_name}.{child_dag_name}',
         default_args=args,
         schedule_interval=None)
+
     with dag_subdag:
 
         task_check_if_dag_triggered = ExternalTaskSensor(
@@ -54,12 +58,12 @@ def create_subdag(parent_dag_name, child_dag_name, args):
 
         task_remove_file = BashOperator(
             task_id='remove_file',
-            bash_command='rm /{{ params.path_to_file }}',
+            bash_command='rm {{ params.path_to_file }}',
             params={'path_to_file': path_to_file})
 
         task_create_finished_timestamp_file = BashOperator(
             task_id='create_finished_timestamp_file',
-            bash_command='touch /{{ params.path_to_dir }}/finished_{{ ts_nodash }}',
+            bash_command='touch {{ params.path_to_dir }}/finished_{{ ts_nodash }}',
             params={'path_to_dir': path_to_dir}
         )
 
