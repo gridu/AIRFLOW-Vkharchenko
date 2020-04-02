@@ -13,16 +13,18 @@ from airflow.operators.postgres_custom import PostgreSQLCountRowsOperator
 config = {
     'dag_id_1': {'schedule_interval': None,
                  'start_date': datetime(2020, 4, 2),
-                 'table_name': 'table_name_1'},
+                 'table_name': 'table_name_1',
+                 'catchup': False},
     'dag_id_2': {'schedule_interval': '@daily',
                  'start_date': datetime(2020, 4, 2),
-                 'table_name': 'table_name_2'},
+                 'table_name': 'table_name_2',
+                 'catchup': False},
     'dag_id_3': {'schedule_interval': '@hourly',
                  'start_date': datetime(2020, 4, 2),
-                 'table_name': 'table_name_3'}
+                 'table_name': 'table_name_3',
+                 'catchup': False}
 }
 
-dags = []
 db_name = 'PostgreSQL'
 
 
@@ -76,11 +78,12 @@ def check_table_exist(sql_to_get_schema, sql_to_check_table_exist,
         return 'create_table'
 
 
-def create_dag(dag_id, default_args, schedule_interval, table_name):
+def create_dag(dag_id, default_args, schedule_interval, table_name, catchup):
 
     with DAG(dag_id,
              default_args=default_args,
-             schedule_interval=schedule_interval) as dag:
+             schedule_interval=schedule_interval,
+             catchup=catchup) as dag:
 
         task_log_info = PythonOperator(
             task_id='log_info',
@@ -139,5 +142,7 @@ for _dag_id, dag_value in config.items():
     _default_args = {'start_date': dag_value['start_date']}
     _schedule_interval = dag_value['schedule_interval']
     _table_name = dag_value['table_name']
+    _catchup = dag_value['catchup']
     globals()[_dag_id] = create_dag(dag_id=_dag_id, default_args=_default_args,
-                                    schedule_interval=_schedule_interval, table_name=_table_name)
+                                    schedule_interval=_schedule_interval,
+                                    table_name=_table_name, catchup=_catchup)

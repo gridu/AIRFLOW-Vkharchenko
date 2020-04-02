@@ -17,7 +17,8 @@ def create_dag():
     with DAG(
             dag_name,
             default_args={'start_date': datetime(2020, 3, 18)},
-            schedule_interval=None) as dag:
+            schedule_interval=None,
+            catchup=False) as dag:
 
         task_check_file = FileSensor(
             task_id="check_file_exist",
