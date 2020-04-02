@@ -13,15 +13,15 @@ from airflow.operators.postgres_custom import PostgreSQLCountRowsOperator
 config = {
     'dag_id_1': {'schedule_interval': None,
                  'start_date': datetime(2020, 4, 2),
-                 'table_name': 'table_name_1',
+                 'table_name': 'public.table_name_1',
                  'catchup': False},
     'dag_id_2': {'schedule_interval': '@daily',
                  'start_date': datetime(2020, 4, 2),
-                 'table_name': 'table_name_2',
+                 'table_name': 'public.table_name_2',
                  'catchup': False},
     'dag_id_3': {'schedule_interval': '@hourly',
                  'start_date': datetime(2020, 4, 2),
-                 'table_name': 'table_name_3',
+                 'table_name': 'public.table_name_3',
                  'catchup': False}
 }
 
@@ -55,27 +55,37 @@ def get_count_rows(**kwargs):  # Code practice: install and use PostgeSQL (Part 
     kwargs['ti'].xcom_push(key=f'{_table_name}_count', value=query[0][0])
 
 
-def check_table_exist(sql_to_get_schema, sql_to_check_table_exist,
-                      table_name, **kwargs):
+def check_table_name(table_name):
+    arr_table_name = table_name.split('.')
+    if len(arr_table_name) is 2:
+        schema, table = arr_table_name
+    elif len(table_name) is 1:
+        table = arr_table_name[0]
+        schema = 'public'
+    else:
+        print('Invalid argument "table_name"')
+        return
+    return schema, table
+
+
+def check_table_exist(**kwargs):
     """ callable function to get schema name and after that check if table exist """
+    table_name = kwargs.get('table_name')
+    exists_task = kwargs.get('exists')
+    not_exists_task = kwargs.get('not_exists')
+    schema, table = check_table_name(table_name)
+    sql_to_check_table_exist = f"SELECT * FROM information_schema.tables " \
+                               f"WHERE table_schema = '{schema}' AND table_name = '{table}';"
+
     hook = PostgresHook()
-
-    # get schema name
-    query = hook.get_records(sql=sql_to_get_schema)
-    for result in query:
-        if 'airflow' in result:
-            schema = result[0]
-            print(schema)
-            break
-
     # check table exist
     query = hook.get_first(sql=sql_to_check_table_exist.format(schema, table_name))
     print(query)
     if query:
-        return 'skip_table_creation'
+        return exists_task
     else:
         print(f'table {table_name} does not exist')
-        return 'create_table'
+        return not_exists_task
 
 
 def create_dag(dag_id, default_args, schedule_interval, table_name, catchup):
@@ -100,24 +110,25 @@ def create_dag(dag_id, default_args, schedule_interval, table_name, catchup):
             task_id='check_table_exist',
             provide_context=True,
             python_callable=check_table_exist,
-            op_args=["SELECT * FROM pg_tables;",
-                     "SELECT * FROM information_schema.tables "
-                     "WHERE table_schema = '{}'"
-                     "AND table_name = '{}';", table_name])
+            op_kwargs={'table_name': table_name,
+                       'not_exists': 'create_table',
+                       'exists': 'skip_table_creation'})
+
+        _, table_name_without_schema = check_table_name(table_name)
 
         task_skip_table_creation = DummyOperator(
             task_id='skip_table_creation')
 
         task_create_table = PostgresOperator(
             task_id='create_table',
-            sql=f'''CREATE TABLE {table_name}(
+            sql=f'''CREATE TABLE {table_name_without_schema}(
             custom_id integer NOT NULL, user_name VARCHAR (50) 
             NOT NULL, timestamp TIMESTAMP NOT NULL);''')
 
         task_insert_new_row = PostgresOperator(
             task_id='insert_new_row',
             trigger_rule=TriggerRule.ALL_DONE,
-            sql=f'''INSERT INTO {table_name} VALUES (
+            sql=f'''INSERT INTO {table_name_without_schema} VALUES (
             '{uuid.uuid4().int % 123456789}',
             '{{{{ ti.xcom_pull(task_ids='execute_bash', key='return_value') }}}}', 
             '{datetime.now()}' );''')  # VALUES (id, xcom_value, datetime)
